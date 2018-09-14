@@ -27,7 +27,7 @@ func getURLFromStr(urlStr string, check bool) (*url.URL, error) {
 	return url, nil
 }
 
-func getBodyBytes(url string) (*[]byte, error) {
+func getBodyBytes(url string) ([]byte, error) {
 	var cl http.Client
 	resp, err := cl.Get(url)
 	if err != nil {
@@ -44,5 +44,5 @@ func getBodyBytes(url string) (*[]byte, error) {
 		return nil, err
 	}
 
-	return &bodyBytes, nil
+	return bodyBytes, nil
 }

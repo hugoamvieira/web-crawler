@@ -7,16 +7,17 @@ import (
 	"strings"
 )
 
+// WebCrawler is the object that stores all information to start crawling a particular domain
 type WebCrawler struct {
-	RootWebsite *url.URL
-	MaxURLDepth int
+	RootWebsite     *url.URL
+	MaxPagesToVisit int
 }
 
 // NewWebCrawler returns a new WebCrawler "object" with the parameters passed to the function.
-func NewWebCrawler(r *url.URL, d int) *WebCrawler {
+func NewWebCrawler(r *url.URL, maxPages int) *WebCrawler {
 	return &WebCrawler{
-		RootWebsite: r,
-		MaxURLDepth: d,
+		RootWebsite:     r,
+		MaxPagesToVisit: maxPages,
 	}
 }
 
@@ -25,37 +26,48 @@ func NewWebCrawler(r *url.URL, d int) *WebCrawler {
 func (wc *WebCrawler) Crawl() {
 	var q []*url.URL
 	visited := make(map[string]*url.URL)
+	pagesVisited := 0
 
 	visited[wc.RootWebsite.Host+wc.RootWebsite.Path] = wc.RootWebsite
+
 	q = append(q, wc.RootWebsite)
 	domain := wc.RootWebsite.Host
 
-	for len(q) != 0 {
+	for len(q) != 0 && (pagesVisited < wc.MaxPagesToVisit) {
+		pagesVisited++
 		currentWebsite := q[0]
 		q = q[1:] // "Dequeue" first element
 
+		fmt.Printf("Analysing %v\n", currentWebsite.String())
 		bodyBytes, err := getBodyBytes(currentWebsite.String())
 		if err != nil {
 			continue
 		}
 
-		for _, linkStr := range getPageLinks(bodyBytes) {
+		title, err := GetPageTitle(bodyBytes)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+
+		fmt.Printf("Page Title: %v\n", *title)
+
+		fmt.Println("Static Assets:")
+		for _, staticAssetSrc := range GetPageStaticAssets(bodyBytes) {
+			fmt.Printf("\t%v\n", staticAssetSrc)
+		}
+
+		fmt.Println("Links:")
+		for _, linkStr := range GetPageLinks(bodyBytes) {
 			parsedURL, err := parseLink(linkStr, currentWebsite)
 			if err != nil {
 				continue
 			}
 
+			fmt.Printf("\t%v\n", parsedURL)
+
+			// We discard any URL that does not belong to the domain from the upcoming logic
 			if !strings.HasSuffix(parsedURL.Host, domain) {
-				// We discard any URL that does not belong to the domain
-				continue
-			}
-
-			depth, err := getPathDepth(parsedURL.Path)
-			if err != nil {
-				continue
-			}
-
-			if *depth > wc.MaxURLDepth {
 				continue
 			}
 
@@ -66,9 +78,10 @@ func (wc *WebCrawler) Crawl() {
 			if _, ok := visited[k]; !ok {
 				visited[k] = parsedURL
 				q = append(q, parsedURL)
-				fmt.Println(parsedURL)
 			}
 		}
+
+		fmt.Println() // This is just a new line for better CLI readability
 	}
 }
 
@@ -104,18 +117,4 @@ func parseLink(link string, currentWebsite *url.URL) (*url.URL, error) {
 	}
 
 	return url, nil
-}
-
-// Depth is calculated by the amount of slashes in the URL path.
-func getPathDepth(path string) (*int, error) {
-	paths := strings.Split(path, "/")
-	depth := len(paths) - 1
-
-	if depth == 0 {
-		return nil, errors.New("Path is empty")
-	}
-
-	// Paths will at least have one '/' which was artificially inserted to standardise the URLs
-	ret := depth - 1
-	return &ret, nil
 }

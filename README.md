@@ -10,9 +10,15 @@ After, you can run it directly by executing `go build && ./web-crawler -url <WEB
 
 A valid `WEBSITE_URL` is defined by one that has a host, not empty path (at least '/') and 'https' or 'http' for the scheme (eg: `https://monzo.com/`)
 
-## Remarks
+By default, it will look for 100 pages maximum, however you can override that by passing in the `-maxPages` flag with whatever you want to be the max.
 
-By default, theres a depth cap for the URLs (Which means the program will ignore any links that have more than a certain depth - This is calculated based on the amount of '/' in the path). You can override this by passing the flag `-depth` followed by an integer. Beware that it will take longer, though.
+For all the deets, run `./web-crawler -help`.
+
+## Testing it
+
+Run `go test ./...`
+
+## Remarks
 
 This program takes the following steps to deal with some edge cases:
 
