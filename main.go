@@ -1,8 +1,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/hugoamvieira/web-crawler/urltools"
 )
 
 var urlFlag = flag.String("url", "https://monzo.com/", "Full URL to a website (eg: https://monzo.com/)")
@@ -14,12 +20,28 @@ func init() {
 func main() {
 	urlStr := *urlFlag
 
-	url, err := getURLFromStr(urlStr, true)
+	url, err := urltools.GetURLFromStr(urlStr, true)
 	if err != nil {
 		log.Fatalln("The URL you entered is not valid.")
 		return
 	}
 
-	wc := NewWebCrawler(url)
-	wc.Crawl()
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	defer cancelCtx()
+
+	go func() {
+		var osC = make(chan os.Signal)
+
+		// Get Notified for incoming signals
+		signal.Notify(osC, syscall.SIGTERM)
+		signal.Notify(osC, syscall.SIGINT)
+
+		// Wait for signal
+		sig := <-osC
+		log.Printf("Received %v OS Signal, starting cleanup", sig.String())
+		cancelCtx()
+	}()
+
+	wc := NewWebCrawlerV2(url, 10)
+	wc.Crawl(ctx)
 }

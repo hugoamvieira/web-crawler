@@ -1,4 +1,4 @@
-package main
+package urltools
 
 import (
 	"bytes"
@@ -11,7 +11,7 @@ import (
 	"golang.org/x/net/html"
 )
 
-func getURLFromStr(urlStr string, check bool) (*url.URL, error) {
+func GetURLFromStr(urlStr string, check bool) (*url.URL, error) {
 	url, err := url.Parse(urlStr)
 	if err != nil {
 		return nil, err
@@ -31,7 +31,7 @@ func getURLFromStr(urlStr string, check bool) (*url.URL, error) {
 	return url, nil
 }
 
-func getBodyBytes(url string) (*[]byte, error) {
+func GetBodyBytes(url string) (*[]byte, error) {
 	var cl http.Client
 	resp, err := cl.Get(url)
 	if err != nil {
@@ -51,10 +51,10 @@ func getBodyBytes(url string) (*[]byte, error) {
 	return &bodyBytes, nil
 }
 
-func getPageLinks(bodyBytes *[]byte) []string {
+func GetPageLinks(bodyBytes []byte) []string {
 	var hrefs []string
 
-	r := bytes.NewReader(*bodyBytes)
+	r := bytes.NewReader(bodyBytes)
 	tokenizer := html.NewTokenizer(r)
 	for {
 		tokType := tokenizer.Next()
@@ -76,8 +76,8 @@ func getPageLinks(bodyBytes *[]byte) []string {
 	}
 }
 
-func parseLink(link string, currentWebsite *url.URL) (*url.URL, error) {
-	url, err := getURLFromStr(link, false)
+func ParseLink(link string, currentWebsite *url.URL) (*url.URL, error) {
+	url, err := GetURLFromStr(link, false)
 	if err != nil {
 		return nil, err
 	}
