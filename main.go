@@ -6,7 +6,6 @@ import (
 )
 
 var urlFlag = flag.String("url", "https://monzo.com/", "Full URL to a website (eg: https://monzo.com/)")
-var depthFlag = flag.Int("depth", 2, "Maximum depth for the URLs being shown")
 
 func init() {
 	flag.Parse()
@@ -14,7 +13,6 @@ func init() {
 
 func main() {
 	urlStr := *urlFlag
-	depth := *depthFlag
 
 	url, err := getURLFromStr(urlStr, true)
 	if err != nil {
@@ -22,6 +20,6 @@ func main() {
 		return
 	}
 
-	wc := NewWebCrawler(url, depth)
+	wc := NewWebCrawler(url)
 	wc.Crawl()
 }
