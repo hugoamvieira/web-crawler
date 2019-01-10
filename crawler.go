@@ -60,7 +60,8 @@ func (wcw *webCrawlerWorker) Work(ctx context.Context, wg *sync.WaitGroup, visit
 			select {
 			case <-ctx.Done():
 				if wcw.isDraining {
-					// Just to avoid the message being printed, would be kinda confusing
+					// Avoid the "No more websites" message being printed if
+					// it reaches the end of the queue before the context is ever cancelled.
 					return
 				}
 
@@ -75,6 +76,7 @@ func (wcw *webCrawlerWorker) Work(ctx context.Context, wg *sync.WaitGroup, visit
 		url, err := wcw.q.Dequeue()
 		if err == datastructures.ErrEmptyQueue {
 			log.Printf("No more websites to look at, worker %v says bye bye 👋\n", wcw.id)
+			wcw.isDraining = true // Avoid the ctx goroutine from logging the "Worker spinning down" message at the end.
 			wg.Done()
 			return
 		}
