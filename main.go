@@ -22,7 +22,7 @@ func main() {
 
 	url, err := urltools.GetURLFromStr(urlStr, true)
 	if err != nil {
-		log.Fatalln("The URL you entered is not valid.")
+		log.Fatalln("The URL you entered is not valid | Error:", err)
 		return
 	}
 
@@ -40,11 +40,10 @@ func main() {
 		cancelCtx()
 	}()
 
-	wc := NewWebCrawlerV2(url)
-	if wc == nil {
-		log.Fatalln("Web Crawler has not been created, cannot continue (Check your config)")
+	wc, err := NewWebCrawlerV2(url)
+	if err != nil {
+		log.Fatalln("Web Crawler has not been created, cannot continue (check your config) | Error:", err)
 	}
 	wc.Crawl(ctx)
-
 	log.Println("Ta-da! 🌟")
 }

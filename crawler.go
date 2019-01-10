@@ -2,23 +2,17 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
-	"time"
 
+	"github.com/hugoamvieira/web-crawler/config"
 	"github.com/hugoamvieira/web-crawler/datastructures"
 	"github.com/hugoamvieira/web-crawler/urltools"
-)
-
-const (
-	// defaultHTTPTimeout outlines the timeout for HTTP requests done by the workers.
-	defaultHTTPTimeout = 10 * time.Second
-	// crawlerWorkerCount outlines the amount of workers that will be spun up.
-	crawlerWorkerCount = 2
 )
 
 type WebCrawlerV2 struct {
@@ -36,22 +30,25 @@ type WebCrawlerV2 struct {
 	// when the workers become unblocked.
 	q           *datastructures.Queue
 	workers     []*webCrawlerWorker
-	wg          sync.WaitGroup
-	visited     sync.Map
+	config      *config.WebCrawlerConfig
 	RootWebsite *url.URL
+
+	wg      sync.WaitGroup
+	visited sync.Map
 }
 
 // NewWebCrawlerV2 creates a new `WebCrawlerV2`, creates the workers
 // and returns nil if you set `crawlerWorkerCount` to zero.
-func NewWebCrawlerV2(r *url.URL) *WebCrawlerV2 {
-	if crawlerWorkerCount < 1 {
-		return nil
+func NewWebCrawlerV2(r *url.URL) (*WebCrawlerV2, error) {
+	config, err := config.LoadJSONConfig("config/config.json")
+	if err != nil {
+		return nil, err
 	}
 
 	q := datastructures.NewQueue()
 
-	workers := make([]*webCrawlerWorker, crawlerWorkerCount)
-	for i := 0; i < crawlerWorkerCount; i++ {
+	workers := make([]*webCrawlerWorker, config.WorkerCount)
+	for i := 0; i < config.WorkerCount; i++ {
 		workers[i] = &webCrawlerWorker{
 			id: i,
 			q:  q,
@@ -61,8 +58,9 @@ func NewWebCrawlerV2(r *url.URL) *WebCrawlerV2 {
 	return &WebCrawlerV2{
 		q:           q,
 		workers:     workers,
+		config:      config,
 		RootWebsite: r,
-	}
+	}, nil
 }
 
 // Crawl boostraps the web crawling process and starts the workers.
@@ -105,7 +103,8 @@ func (wc *WebCrawlerV2) bootstrap(ctx context.Context) {
 	// either the website is having issues or unreachable - Either way we're not interested anymore.
 	// We're also taking into account the main context, so if the user is not interested
 	// anymore, the request gets cancelled.
-	ctxWithTimeout, cancelTimeoutCtx := context.WithTimeout(ctx, defaultHTTPTimeout)
+	fmt.Println(wc.config.HTTPTimeout)
+	ctxWithTimeout, cancelTimeoutCtx := context.WithTimeout(ctx, wc.config.HTTPTimeout)
 
 	rq = rq.WithContext(ctxWithTimeout)
 
