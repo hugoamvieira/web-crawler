@@ -42,6 +42,6 @@ func main() {
 		cancelCtx()
 	}()
 
-	wc := NewWebCrawlerV2(url, 10)
+	wc := NewWebCrawlerV2(url)
 	wc.Crawl(ctx)
 }
