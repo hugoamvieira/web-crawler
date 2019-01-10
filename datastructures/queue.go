@@ -7,6 +7,7 @@ import (
 )
 
 var (
+	// ErrEmptyQueue is returned when there's no elements left in the queue
 	ErrEmptyQueue = errors.New("Queue is empty")
 )
 
@@ -15,12 +16,15 @@ type Queue struct {
 	mu  sync.Mutex
 }
 
+// NewQueue returns a new queue object (which is based on a slice working as a list)
 func NewQueue() *Queue {
 	return &Queue{
 		arr: make([]*url.URL, 0),
 	}
 }
 
+// Dequeue removes a URL reference from the queue and it returns it back to the caller.
+// It errors if you try to Dequeue() on an empty queue.
 func (q *Queue) Dequeue() (*url.URL, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -34,6 +38,7 @@ func (q *Queue) Dequeue() (*url.URL, error) {
 	return el, nil
 }
 
+// Enqueue puts a URL reference into the queue
 func (q *Queue) Enqueue(el *url.URL) {
 	q.mu.Lock()
 	defer q.mu.Unlock()

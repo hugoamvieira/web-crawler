@@ -31,8 +31,6 @@ func main() {
 
 	go func() {
 		var osC = make(chan os.Signal)
-
-		// Get Notified for incoming signals
 		signal.Notify(osC, syscall.SIGTERM)
 		signal.Notify(osC, syscall.SIGINT)
 
@@ -43,5 +41,10 @@ func main() {
 	}()
 
 	wc := NewWebCrawlerV2(url)
+	if wc == nil {
+		log.Fatalln("Web Crawler has not been created, cannot continue (Check your config)")
+	}
 	wc.Crawl(ctx)
+
+	log.Println("Ta-da! 🌟")
 }

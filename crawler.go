@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -35,10 +34,6 @@ type WebCrawlerV2 struct {
 	// this behaviour at its core. When using a queue, if N-1 workers block,
 	// the program still continues working with one worker, and it'll "self-heal"
 	// when the workers become unblocked.
-
-	// Using an unbuffered channel instead of a queue because if I were to implement a queue
-	// with slices (which is the way I'd do it), there'd be a lot of re-assignments,
-	// appends, slice expansions, copies, which are expensive.
 	q           *datastructures.Queue
 	workers     []*webCrawlerWorker
 	wg          sync.WaitGroup
@@ -46,55 +41,8 @@ type WebCrawlerV2 struct {
 	RootWebsite *url.URL
 }
 
-type webCrawlerWorker struct {
-	id         int
-	q          *datastructures.Queue
-	isDraining bool
-}
-
-func (wcw *webCrawlerWorker) Work(ctx context.Context, wg *sync.WaitGroup, visited *sync.Map) {
-	log.Printf("Worker ID %v reporting for duty 👨‍🏭\n", wcw.id)
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				if wcw.isDraining {
-					// Avoid the "No more websites" message being printed if
-					// it reaches the end of the queue before the context is ever cancelled.
-					return
-				}
-
-				log.Printf("Worker %v gracefully spinning down 💃\n", wcw.id)
-				wcw.isDraining = true
-				return
-			}
-		}
-	}()
-
-	for {
-		url, err := wcw.q.Dequeue()
-		if err == datastructures.ErrEmptyQueue {
-			log.Printf("No more websites to look at, worker %v says bye bye 👋\n", wcw.id)
-			wcw.isDraining = true // Avoid the ctx goroutine from logging the "Worker spinning down" message at the end.
-			wg.Done()
-			return
-		}
-
-		if _, ok := visited.Load(url.String()); ok {
-			continue
-		}
-
-		fmt.Printf("Visited Website: %v\n", url.String())
-		if !wcw.isDraining {
-			// Connect to website
-			// Pull all links
-			// Analyse them
-			// Put them in the channel if they haven't been visited
-		}
-	}
-}
-
+// NewWebCrawlerV2 creates a new `WebCrawlerV2`, creates the workers
+// and returns nil if you set `crawlerWorkerCount` to zero.
 func NewWebCrawlerV2(r *url.URL) *WebCrawlerV2 {
 	if crawlerWorkerCount < 1 {
 		return nil
@@ -117,11 +65,37 @@ func NewWebCrawlerV2(r *url.URL) *WebCrawlerV2 {
 	}
 }
 
+// Crawl boostraps the web crawling process and starts the workers.
 func (wc *WebCrawlerV2) Crawl(ctx context.Context) {
 	// Bootstrap the channel with root URL links.
 	// This reduces the chances of two workers colliding on the same website.
 	// They'd (probably) diverge at some point, but ignoring this step would duplicate
 	// ("N-licate" actually) work across workers.
+	wc.bootstrap(ctx)
+
+	// Start workers
+	for _, worker := range wc.workers {
+		if worker == nil {
+			log.Printf("No worker, ignoring")
+			continue
+		}
+
+		// This should be done outside the goroutine because there's a chance
+		// that the Wait() call (outside the loop) will be done before
+		// any of the goroutines actually start. In that situation we're waiting
+		// on a WaitGroup of 0, which means it returns immediately.
+		wc.wg.Add(1)
+
+		go func(c context.Context, w *webCrawlerWorker) {
+			w.Work(c, &wc.wg, &wc.visited)
+		}(ctx, worker)
+	}
+
+	wc.wg.Wait()
+	log.Println("All workers spun down")
+}
+
+func (wc *WebCrawlerV2) bootstrap(ctx context.Context) {
 	rq, err := http.NewRequest("GET", wc.RootWebsite.String(), nil)
 	if err != nil {
 		log.Fatalln("Failed to create request, cannot continue | Error:", err)
@@ -167,29 +141,7 @@ func (wc *WebCrawlerV2) Crawl(ctx context.Context) {
 		}
 
 		if _, ok := wc.visited.Load(url.String()); !ok {
-			log.Printf("Adding %v to channel", url.String())
 			wc.q.Enqueue(url)
 		}
 	}
-
-	// Start workers
-	for _, worker := range wc.workers {
-		if worker == nil {
-			log.Printf("No worker, ignoring")
-			continue
-		}
-
-		// This should be done outside the goroutine because there's a chance
-		// that the Wait() call (outside the loop) will be done before
-		// any of the goroutines actually start. In that situation we're waiting
-		// on a WaitGroup of 0, which means it returns immediately.
-		wc.wg.Add(1)
-
-		go func(c context.Context, w *webCrawlerWorker) {
-			w.Work(c, &wc.wg, &wc.visited)
-		}(ctx, worker)
-	}
-
-	wc.wg.Wait()
-	log.Println("All workers spun down")
 }
