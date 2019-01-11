@@ -2,13 +2,22 @@ package urltools
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"golang.org/x/net/html"
+)
+
+var (
+	// ErrStatusCodeNotOK is returned if an HTTP request's status code is < 200 or > 299.
+	ErrStatusCodeNotOK = errors.New("Status code was not in the 200 range for this request")
+	// ErrNilURLValues is returned when you pass nil values into the GetDomainWebsiteURLs func.
+	ErrNilURLValues = errors.New("One or more URLs passed are nil, cannot continue")
 )
 
 func GetURLFromStr(urlStr string, check bool) (*url.URL, error) {
@@ -31,27 +40,63 @@ func GetURLFromStr(urlStr string, check bool) (*url.URL, error) {
 	return url, nil
 }
 
-func GetBodyBytes(url string) (*[]byte, error) {
-	var cl http.Client
-	resp, err := cl.Get(url)
+// GetDomainWebsiteURLs receives a context, the URL it'll get the content from, the time-out for the HTTP request,
+// the current website you're on and it returns any URLs found on that page's content for that domain.
+// The last parameter (currentWebsite) is used to build up new links that are in the domain but
+// not defined completely (eg: href="/about").
+func GetDomainWebsiteURLs(ctx context.Context, u *url.URL, timeout time.Duration, currentWebsite *url.URL) ([]*url.URL, error) {
+	if u == nil || currentWebsite == nil {
+		// No need to validate timeout - already been done on config load.
+		return nil, ErrNilURLValues
+	}
+
+	rq, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, errors.New("Couldn't get content. Website returned status " + resp.Status)
+	// If a request takes longer than what is outlined in `defaultHTTPTimeout`, I think it's safe to assume that
+	// either the website is having issues or unreachable - Either way we're not interested anymore.
+	// We're also taking into account the main context, so if the user is not interested
+	// anymore, the request gets cancelled.
+	ctxWithTimeout, cancelTimeoutCtx := context.WithTimeout(ctx, timeout)
+	defer cancelTimeoutCtx()
+
+	rq = rq.WithContext(ctxWithTimeout)
+
+	client := http.DefaultClient
+	resp, err := client.Do(rq)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, ErrStatusCodeNotOK
 	}
 
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
-	return &bodyBytes, nil
+	urls := make([]*url.URL, 0)
+	for _, link := range getPageLinks(bodyBytes) {
+		url, err := parseLink(link, currentWebsite)
+		if err != nil {
+			continue
+		}
+		if !strings.HasSuffix(url.Host, currentWebsite.Host) {
+			// We discard any URL that does not belong to the domain
+			continue
+		}
+
+		urls = append(urls, url)
+	}
+
+	return urls, nil
 }
 
-func GetPageLinks(bodyBytes []byte) []string {
+func getPageLinks(bodyBytes []byte) []string {
 	var hrefs []string
 
 	r := bytes.NewReader(bodyBytes)
@@ -76,7 +121,7 @@ func GetPageLinks(bodyBytes []byte) []string {
 	}
 }
 
-func ParseLink(link string, currentWebsite *url.URL) (*url.URL, error) {
+func parseLink(link string, currentWebsite *url.URL) (*url.URL, error) {
 	url, err := GetURLFromStr(link, false)
 	if err != nil {
 		return nil, err
@@ -108,4 +153,8 @@ func ParseLink(link string, currentWebsite *url.URL) (*url.URL, error) {
 	}
 
 	return url, nil
+}
+
+func GetVisitedMapKey(url url.URL) string {
+	return url.Host + url.Path
 }

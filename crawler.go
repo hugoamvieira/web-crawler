@@ -2,17 +2,14 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"io/ioutil"
 	"log"
-	"net/http"
 	"net/url"
-	"strings"
 	"sync"
+
+	"github.com/hugoamvieira/web-crawler/urltools"
 
 	"github.com/hugoamvieira/web-crawler/config"
 	"github.com/hugoamvieira/web-crawler/datastructures"
-	"github.com/hugoamvieira/web-crawler/urltools"
 )
 
 type WebCrawlerV2 struct {
@@ -34,7 +31,7 @@ type WebCrawlerV2 struct {
 	RootWebsite *url.URL
 
 	wg      sync.WaitGroup
-	visited sync.Map
+	visited sync.Map // Map of URL host+path (string) to bool
 }
 
 // NewWebCrawlerV2 creates a new `WebCrawlerV2`, creates the workers
@@ -50,8 +47,9 @@ func NewWebCrawlerV2(r *url.URL) (*WebCrawlerV2, error) {
 	workers := make([]*webCrawlerWorker, config.WorkerCount)
 	for i := 0; i < config.WorkerCount; i++ {
 		workers[i] = &webCrawlerWorker{
-			id: i,
-			q:  q,
+			id:     i,
+			q:      q,
+			config: config,
 		}
 	}
 
@@ -94,52 +92,20 @@ func (wc *WebCrawlerV2) Crawl(ctx context.Context) {
 }
 
 func (wc *WebCrawlerV2) bootstrap(ctx context.Context) {
-	rq, err := http.NewRequest("GET", wc.RootWebsite.String(), nil)
+	domainURLs, err := urltools.GetDomainWebsiteURLs(ctx, wc.RootWebsite, wc.config.HTTPTimeout, wc.RootWebsite)
 	if err != nil {
-		log.Fatalln("Failed to create request, cannot continue | Error:", err)
+		log.Fatalln("Failed to get root website's URLs, cannot continue | Error:", err)
 	}
 
-	// If a request takes longer than what is outlined in `defaultHTTPTimeout`, I think it's safe to assume that
-	// either the website is having issues or unreachable - Either way we're not interested anymore.
-	// We're also taking into account the main context, so if the user is not interested
-	// anymore, the request gets cancelled.
-	fmt.Println(wc.config.HTTPTimeout)
-	ctxWithTimeout, cancelTimeoutCtx := context.WithTimeout(ctx, wc.config.HTTPTimeout)
+	wc.visited.Store(urltools.GetVisitedMapKey(*wc.RootWebsite), true)
 
-	rq = rq.WithContext(ctxWithTimeout)
-
-	client := http.DefaultClient
-	resp, err := client.Do(rq)
-	if err != nil {
-		log.Fatalln("Failed to get response from root website, cannot continue | Error:", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		log.Fatalln("Failed to get successful response from root website, cannot continue | Error:", err)
-	}
-
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatalln("Failed to read body bytes from root website, cannot continue | Error:", err)
-	}
-
-	resp.Body.Close()
-
-	// Context w/ the timeout is not necessary anymore, so we cancel it to avoid a leak.
-	cancelTimeoutCtx()
-
-	wc.visited.Store(wc.RootWebsite.String(), true)
-
-	for _, pageLink := range urltools.GetPageLinks(bodyBytes) {
-		url, err := urltools.ParseLink(pageLink, wc.RootWebsite)
-		if err != nil {
-			continue
-		}
-		if !strings.HasSuffix(url.Host, wc.RootWebsite.Host) {
-			// We discard any URL that does not belong to the domain
+	for _, url := range domainURLs {
+		if url == nil {
 			continue
 		}
 
-		if _, ok := wc.visited.Load(url.String()); !ok {
+		k := urltools.GetVisitedMapKey(*url)
+		if _, ok := wc.visited.Load(k); !ok {
 			wc.q.Enqueue(url)
 		}
 	}

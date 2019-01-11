@@ -6,16 +6,16 @@ import (
 	"log"
 	"sync"
 
+	"github.com/hugoamvieira/web-crawler/config"
+
 	"github.com/hugoamvieira/web-crawler/datastructures"
 )
 
 type webCrawlerWorker struct {
-	id int
-	q  *datastructures.Queue
-	// Using sync.Map here because it's optimised for maps that
-	//only grow (multiple reads), so we can minimise lock contention.
-	visited *sync.Map
-	done    bool
+	id     int
+	q      *datastructures.Queue
+	config *config.WebCrawlerConfig
+	done   bool
 }
 
 // Work starts the worker and it keeps it alive until it gets its context cancelled, or the queue is empty
@@ -37,7 +37,7 @@ func (wcw *webCrawlerWorker) Work(ctx context.Context, wg *sync.WaitGroup, visit
 			return
 		}
 
-		if _, ok := visited.Load(url.String()); ok {
+		if _, ok := visited.Load(url); ok {
 			continue
 		}
 
@@ -47,7 +47,7 @@ func (wcw *webCrawlerWorker) Work(ctx context.Context, wg *sync.WaitGroup, visit
 		// Connect to website
 		// Pull all links
 		// Analyse them
-		// Put them in the channel if they haven't been visited
+		// Put them in the queue if they haven't been visited
 	}
 }
 
