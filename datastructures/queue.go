@@ -34,7 +34,14 @@ func (q *Queue) Dequeue() (*url.URL, error) {
 	}
 
 	el := q.arr[0]
-	q.arr = q.arr[1:]
+
+	// Delete q.arr[0] from the list. Doing it like this so that the internal
+	// slice structure is able to stop referencing the value and the GC can then
+	// collect it.
+	copy(q.arr[0:], q.arr[1:])
+	q.arr[len(q.arr)-1] = nil
+	q.arr = q.arr[:len(q.arr)-1]
+
 	return el, nil
 }
 
