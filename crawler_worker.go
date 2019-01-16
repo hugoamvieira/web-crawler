@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/hugoamvieira/web-crawler/config"
+	"github.com/hugoamvieira/web-crawler/urltools"
 
 	"github.com/hugoamvieira/web-crawler/datastructures"
 )
@@ -36,18 +37,32 @@ func (wcw *webCrawlerWorker) Work(ctx context.Context, wg *sync.WaitGroup, visit
 			wg.Done()
 			return
 		}
-
-		if _, ok := visited.Load(url); ok {
+		if url == nil {
 			continue
 		}
 
-		fmt.Printf("Got website: %v\n", url.String())
+		// Last version of this program did HTTP requests and all the parsing
+		// even if the website had been visited - This version fixes that.
+		if _, ok := visited.Load(urltools.GetVisitedMapKey(*url)); ok {
+			continue
+		}
 
-		// TODO
-		// Connect to website
-		// Pull all links
-		// Analyse them
-		// Put them in the queue if they haven't been visited
+		visited.Store(urltools.GetVisitedMapKey(*url), true)
+
+		fmt.Println("Got website:", url.String())
+		domainURLs, err := urltools.GetDomainWebsiteURLs(ctx, url, wcw.config.HTTPTimeout, url)
+		if err == urltools.ErrStatusCodeNotOK {
+			continue
+		}
+		if err != nil {
+			continue
+		}
+
+		for _, u := range domainURLs {
+			if _, ok := visited.Load(urltools.GetVisitedMapKey(*u)); !ok {
+				wcw.q.Enqueue(u)
+			}
+		}
 	}
 }
 
